@@ -1,7 +1,8 @@
 # 🐍 Snake + Deep Learning: una serpiente que aprende sola
 
-Una red neuronal **escrita desde cero con NumPy** (sin PyTorch ni TensorFlow) que aprende a jugar al Snake
-únicamente a base de prueba y error. Nadie le explica las reglas ni le enseña a jugar: solo recibe
+Una red neuronal que aprende a jugar al Snake únicamente a base de prueba y error. Hay **dos versiones**:
+una **escrita desde cero con NumPy** (para entender cómo funciona por dentro) y otra con **PyTorch**, que puede
+entrenar en la **GPU** (CUDA). Nadie le explica las reglas ni le enseña a jugar: solo recibe
 puntos cuando se come una manzana y pierde puntos cuando se estrella.
 
 Lo mejor: **puedes ver su "cerebro" funcionando**, neurona a neurona, mientras aprende y mientras juega.
@@ -40,7 +41,7 @@ pip install -r requirements.txt
 # 2. Ver jugar a la IA ya entrenada (incluida en el repositorio)
 python main.py watch
 
-# 3. Ver cómo APRENDE desde cero, con el cerebro visible (tarda ~1-2 minutos)
+# 3. Ver cómo APRENDE desde cero, con el cerebro visible (tarda unos 2-3 minutos)
 python main.py train --render
 
 # 4. Jugar tú mismo (flechas o WASD)
@@ -50,9 +51,28 @@ python main.py play
 Controles de la ventana de visualización: `↑`/`↓` cambian la velocidad (Lento → Turbo),
 `Espacio` pausa y `Esc` sale.
 
+### Los dos modelos incluidos
+
+El repositorio trae **dos redes ya entrenadas**, con la misma estructura y el mismo formato (`.npz`), así que se
+ven con el mismo comando:
+
+| Modelo | Cómo se entrenó | Archivo | Comando para verlo |
+|---|---|---|---|
+| **NumPy** | Red hecha a mano, en CPU, 2000 partidas | `models/pretrained.npz` | `python main.py watch` |
+| **PyTorch + GPU** | PyTorch en una RTX 3060 (CUDA), 1500 partidas | `models/pretrained_gpu.npz` | `python main.py watch --model models/pretrained_gpu.npz` |
+
+Para compararlos de forma justa, que jueguen con las mismas manzanas usando la misma semilla:
+
+```bash
+python main.py watch --model models/pretrained.npz     --seed 1
+python main.py watch --model models/pretrained_gpu.npz --seed 1
+```
+
+Resultados de ambos en [Resultados](#-resultados).
+
 ### Ver cómo evoluciona el aprendizaje
 
-El repositorio incluye "fotos" de la red en distintos momentos del entrenamiento. Compáralas:
+El repositorio incluye "fotos" de la red NumPy en distintos momentos del entrenamiento. Compáralas:
 
 ```bash
 python main.py watch --model models/evolution/ep_00100.npz   # tras 100 partidas: torpe
@@ -189,9 +209,17 @@ está verificada en los tests comparándola con el gradiente calculado "a fuerza
 
 ## 📈 Resultados
 
-Entrenamiento de 2000 partidas en un tablero de 10×10 (≈ 2 minutos en un portátil, solo CPU):
+### Cómo aprendieron
 
-![Curva de aprendizaje](docs/img/training.png)
+**Modelo NumPy**: 2000 partidas en un tablero de 10×10 (≈ 2 minutos en un portátil, solo CPU).
+
+![Curva de aprendizaje, modelo NumPy](docs/img/training.png)
+
+**Modelo PyTorch + GPU**: 1500 partidas, mismos parámetros y semilla (`train --backend torch --device cuda --seed 7`).
+
+![Curva de aprendizaje, modelo PyTorch en GPU](docs/img/training_gpu.png)
+
+### Cuánto juegan
 
 Medido en 300 partidas sin azar, con una semilla que no se usó para elegir el modelo:
 
@@ -199,14 +227,19 @@ Medido en 300 partidas sin azar, con una semilla que no se usó para elegir el m
 |---|---:|---:|
 | Jugando al azar | 0,2 | – |
 | Red con 11 entradas (versión anterior, solo peligros cercanos) | 20,1 | 37 |
-| **Red con 14 entradas (con espacio libre)** | **36,5** | **55** |
+| **Red con 14 entradas (con espacio libre), modelo NumPy** | **36,5** | **55** |
+| **Red con 14 entradas (con espacio libre), modelo PyTorch + GPU** | **38,5** | **63** |
+
+Los dos modelos de 14 entradas rinden prácticamente igual: la diferencia de 2 manzanas está dentro del ruido
+entre entrenamientos (cada uno tuvo distinto número de partidas y el azar influye), así que **no significa que
+PyTorch o la GPU aprendan mejor**: es el mismo algoritmo, solo que calculado en otro sitio.
 
 Añadir las 3 entradas de espacio libre casi **duplica** la puntuación (+82 %). Aun así, casi todas las
 partidas siguen terminando por chocar con el propio cuerpo; la diferencia es que ahora la serpiente está
 mucho más larga cuando ocurre (con 100 casillas y ~36 de largo, cada giro es muy ajustado).
 
 **Lo curioso: funciona en tableros que nunca vio.** Como la red solo recibe pistas *relativas* a la cabeza
-(peligro, dirección, comida, espacio), no sabe nada del tamaño del tablero. La misma red, entrenada
+(peligro, dirección, comida, espacio), no sabe nada del tamaño del tablero. La misma red (modelo NumPy), entrenada
 en 10×10, consigue (100 partidas por tablero):
 
 | Tablero | Manzanas de media |
@@ -293,7 +326,8 @@ flowchart LR
     end
     subgraph rl["rl/ — aprendizaje por refuerzo"]
         ENV[SnakeEnv<br/>recompensas] --> OBS[observation<br/>14 números]
-        AG[DQNAgent] --> RB[ReplayBuffer]
+        AG[DQNAgent<br/>NumPy] --> RB[ReplayBuffer]
+        TA[TorchDQNAgent<br/>PyTorch + GPU] --> RB
         TR[Trainer<br/>bucle de entrenamiento]
     end
     subgraph nn["nn/ — deep learning desde cero"]
@@ -308,6 +342,7 @@ flowchart LR
     AG --> NET
     TR --> ENV
     TR --> AG
+    TR --> TA
     TR -. "observadores" .-> DASH
 ```
 
@@ -345,9 +380,11 @@ snake-deep-learning/
 │   └── benchmark_backends.py  # Compara NumPy vs PyTorch CPU vs GPU
 ├── tests/                   # 27 tests (reglas, gradientes, entrenamiento, NumPy≡PyTorch)
 ├── models/
-│   ├── pretrained.npz       # Red ya entrenada
-│   ├── evolution/           # La red tras 100, 500, 1000 y 2000 partidas
-│   └── history.csv          # Datos del entrenamiento incluido
+│   ├── pretrained.npz       # Red ya entrenada con NumPy (CPU)
+│   ├── pretrained_gpu.npz   # Red ya entrenada con PyTorch en GPU (CUDA)
+│   ├── evolution/           # La red NumPy tras 100, 500, 1000 y 2000 partidas
+│   ├── history.csv          # Datos del entrenamiento NumPy
+│   └── history_gpu.csv      # Datos del entrenamiento PyTorch/GPU
 └── docs/img/                # GIFs y gráficas del README
 ```
 

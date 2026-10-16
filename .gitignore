@@ -6,8 +6,10 @@ venv/
 .idea/
 .vscode/
 
-# Resultados de entrenamientos propios (se conserva solo el modelo preentrenado)
+# Resultados de entrenamientos propios (se conservan solo los modelos preentrenados incluidos)
 models/*
 !models/pretrained.npz
+!models/pretrained_gpu.npz
 !models/evolution/
 !models/history.csv
+!models/history_gpu.csv
