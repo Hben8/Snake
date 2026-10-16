@@ -399,7 +399,7 @@ Entrenar **sin** ventana es más rápido; con `--render --speed Turbo` casi no s
 | `train --gamma 0` | La serpiente solo piensa en la recompensa inmediata, sin futuro. ¿Qué cambia? |
 | `train --episodes 200` | ¿Cuánto tiempo necesita el aprendizaje antes de despegar? |
 | `watch --width 30 --height 30` | ¿Sigue funcionando en un tablero enorme? |
-| Cambiar `RewardConfig` en [`environment.py`](snake_ai/rl/environment.py) | Quita el +0,1/−0,1 de "acercarse": ¿aprende igual de rápido? |
+| Cambiar `RewardConfig` en [`environment.py`](snake_ai/rl/environment.py) | Quita el +0,1/−0,1 de "acercarse": ¿aprende igual de rápido? | 
 
 Usa `--seed` para que dos entrenamientos sean comparables.
 
