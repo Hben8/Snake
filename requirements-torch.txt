@@ -1,0 +1,7 @@
+# Backend opcional de PyTorch. En Windows, "pip install torch" a secas instala la versión
+# SOLO CPU. Para usar la tarjeta gráfica NVIDIA instala así:
+#
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#
+-r requirements.txt
+torch>=2.4

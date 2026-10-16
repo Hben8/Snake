@@ -1,0 +1,4 @@
+numpy>=1.26
+pygame-ce>=2.5
+matplotlib>=3.8
+pillow>=10.0

@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Resultados de entrenamientos propios (se conserva solo el modelo preentrenado)
+models/*
+!models/pretrained.npz
+!models/evolution/
+!models/history.csv
