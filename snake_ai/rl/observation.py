@@ -1,20 +1,24 @@
-"""Lo que "ve" la red: 14 números que resumen la situación.
+"""Lo que "ve" la red: unos pocos números que resumen la situación.
 
 La serpiente NO ve la pantalla: solo recibe estas pistas. Son relativas a
 hacia dónde mira, así que la red funciona igual en tableros de cualquier
-tamaño.
+tamaño. Hay varios "juegos de pistas" (cada modelo nuevo del proyecto añade
+mejoras):
 
-  * 11 pistas de 0/1: peligro inmediato, hacia dónde mira y dónde está la comida.
-  * 3 pistas entre 0 y 1: el ESPACIO LIBRE que quedaría tras cada movimiento.
-    Sin ellas, la serpiente solo veía peligros a una casilla y acababa
-    encerrándose a sí misma (9 de cada 10 muertes eran por chocar con su cuerpo).
+  * "basico" (14 números): peligro inmediato, hacia dónde mira, dónde está la
+    comida y el ESPACIO LIBRE que quedaría tras cada movimiento. Sin el espacio,
+    la serpiente solo veía peligros a una casilla y acababa encerrándose a sí
+    misma (9 de cada 10 muertes eran por chocar con su cuerpo).
+  * "cola" (17 números): lo mismo, pero el espacio libre tiene en cuenta que la
+    cola se va apartando, y añade 3 pistas: ¿podría llegar hasta mi propia cola
+    tras ese movimiento? Si puede, siempre tendrá una salida.
 """
 
 import numpy as np
 
 from ..game import Action, Direction, SnakeGame
 
-FEATURE_NAMES = (
+BASIC_NAMES = (
     "Peligro recto",
     "Peligro derecha",
     "Peligro izquierda",
@@ -30,10 +34,24 @@ FEATURE_NAMES = (
     "Espacio derecha",
     "Espacio izquierda",
 )
+TAIL_NAMES = BASIC_NAMES + ("Cola recto", "Cola derecha", "Cola izquierda")
+
+FEATURE_SETS = {"basico": BASIC_NAMES, "cola": TAIL_NAMES}
+DEFAULT_FEATURES = "basico"
+
+# Compatibilidad: el juego de pistas por defecto.
+FEATURE_NAMES = FEATURE_SETS[DEFAULT_FEATURES]
 N_FEATURES = len(FEATURE_NAMES)
 
 
-def observe(game: SnakeGame) -> np.ndarray:
+def feature_names(features: str) -> tuple[str, ...]:
+    if features not in FEATURE_SETS:
+        raise ValueError(f"Juego de pistas desconocido '{features}'. Opciones: {', '.join(FEATURE_SETS)}")
+    return FEATURE_SETS[features]
+
+
+def observe(game: SnakeGame, features: str = DEFAULT_FEATURES) -> np.ndarray:
+    feature_names(features)  # valida el nombre
     head_x, head_y = game.snake.head
     direction = game.snake.direction
 
@@ -52,13 +70,21 @@ def observe(game: SnakeGame) -> np.ndarray:
     # Espacio alcanzable tras cada movimiento, como fracción de lo que necesita la serpiente
     # (su longitud + 1). 1.0 = hay sitio de sobra; menos de 1.0 = callejón sin salida.
     needed = len(game.snake) + 1
+    actions = (Action.STRAIGHT, Action.TURN_RIGHT, Action.TURN_LEFT)
 
-    def space(action: Action) -> float:
+    def target(action: Action):
         dx, dy = direction.turn(action).vector
-        return game.reachable_cells((head_x + dx, head_y + dy), needed) / needed
+        return head_x + dx, head_y + dy
+
+    if features == "basico":
+        space = [game.reachable_cells(target(a), needed) / needed for a in actions]
+        tail: list[float] = []
+    else:
+        info = [game.escape_info(target(a), needed) for a in actions]
+        space = [cells / needed for cells, _ in info]
+        tail = [float(reaches) for _, reaches in info]
 
     return np.array(
-        [danger(Action.STRAIGHT), danger(Action.TURN_RIGHT), danger(Action.TURN_LEFT), *heading, *food,
-         space(Action.STRAIGHT), space(Action.TURN_RIGHT), space(Action.TURN_LEFT)],
+        [*(danger(a) for a in actions), *heading, *food, *space, *tail],
         dtype=np.float32,
     )

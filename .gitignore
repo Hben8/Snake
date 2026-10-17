@@ -10,9 +10,11 @@ venv/
 models/*
 !models/pretrained.npz
 !models/pretrained_gpu.npz
+!models/pretrained_cola.npz
 !models/evolution/
 !models/history.csv
 !models/history_gpu.csv
+!models/history_cola.csv
 
 # Material para redes sociales (vídeos e imágenes) y el script local que lo genera: no se sube
 linkedin/

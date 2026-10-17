@@ -3,7 +3,8 @@
 import argparse
 import sys
 
-from .rl import ConsoleLogger, DQNAgent, DQNConfig, SnakeEnv, TrainConfig, Trainer, TrainingHistory
+from .rl import (DEFAULT_FEATURES, FEATURE_SETS, ConsoleLogger, DQNAgent, DQNConfig, SnakeEnv, TrainConfig,
+                 Trainer, TrainingHistory)
 
 
 def _add_board_args(p: argparse.ArgumentParser, default: int | None = 10) -> None:
@@ -28,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="numpy = red hecha a mano; torch = PyTorch (con GPU si hay)")
     train.add_argument("--device", default="auto",
                        help="solo con --backend torch: auto, cpu o cuda")
+    train.add_argument("--features", choices=sorted(FEATURE_SETS), default=DEFAULT_FEATURES,
+                       help="qué pistas recibe la red: basico (14) o cola (17, la serpiente sabe si puede salir)")
     train.add_argument("--gamma", type=float, default=0.95, help="importancia del futuro (0-1)")
     train.add_argument("--seed", type=int, default=None, help="semilla para repetir resultados")
     train.add_argument("--out", default="models", help="carpeta donde guardar modelos e historial")
@@ -62,7 +65,7 @@ def make_agent(backend: str, env: SnakeEnv, config: DQNConfig, seed: int | None,
 
 
 def _train(args: argparse.Namespace) -> None:
-    env = SnakeEnv(args.width, args.height, seed=args.seed)
+    env = SnakeEnv(args.width, args.height, seed=args.seed, features=args.features)
     config = DQNConfig(hidden=tuple(args.hidden), lr=args.lr, gamma=args.gamma,
                        batch_size=args.batch_size)
     agent = make_agent(args.backend, env, config, args.seed, args.device)

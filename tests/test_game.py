@@ -143,3 +143,34 @@ def test_observation_space_feature_detects_pocket():
     needed = len(game.snake) + 1  # 6
     assert obs[11] == pytest.approx(2 / needed)  # recto: 2 casillas de las 6 necesarias
     assert obs[12] == 0 and obs[13] == 0  # los otros dos giros son choque directo
+
+
+def test_escape_info_counts_cells_the_tail_will_free():
+    game = make_game()
+    game.snake.body.clear()
+    # De la cabeza a la cola. Desde (0,0), el trozo (1,0) se libera a tiempo (es el 2º contando desde
+    # la cola) aunque ahora esté ocupado; (0,1) todavía no.
+    game.snake.body.extend([(5, 5), (0, 1), (4, 4), (1, 0), (3, 3)])
+    assert game.reachable_cells((0, 0), limit=10) == 1  # el cálculo estático lo ve como callejón
+    cells, reaches_tail = game.escape_info((0, 0), limit=10)
+    assert cells == 10 and reaches_tail  # el dinámico sabe que (1,0) se abrirá
+
+
+def test_escape_info_real_dead_end_and_tail():
+    game = make_game()
+    game.snake.body.clear()
+    game.snake.body.extend([(5, 5), (0, 1), (1, 0), (1, 1), (4, 5)])
+    assert game.escape_info((0, 0), limit=10) == (1, False)  # callejón de verdad
+    assert game.escape_info((-1, 0), limit=10) == (0, False)  # pared
+    open_game = make_game()
+    assert open_game.escape_info((6, 5), limit=10)[1]  # tablero abierto: llega a la cola
+
+
+def test_cola_features_have_17_inputs_and_tail_flags():
+    game = make_game()
+    obs = observe(game, "cola")
+    assert obs.shape == (17,)
+    assert list(obs[14:]) == [1, 1, 1]  # tablero abierto: puede llegar a la cola en las tres direcciones
+    assert observe(game, "basico").shape == (14,)
+    with pytest.raises(ValueError):
+        observe(game, "inventado")

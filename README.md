@@ -1,8 +1,9 @@
 # 🐍 Snake + Deep Learning: una serpiente que aprende sola
 
-Una red neuronal que aprende a jugar al Snake únicamente a base de prueba y error. Hay **dos versiones**:
-una **escrita desde cero con NumPy** (para entender cómo funciona por dentro) y otra con **PyTorch**, que puede
-entrenar en la **GPU** (CUDA). Nadie le explica las reglas ni le enseña a jugar: solo recibe
+Una red neuronal que aprende a jugar al Snake únicamente a base de prueba y error. Hay **dos formas de
+entrenarla**: una **escrita desde cero con NumPy** (para entender cómo funciona por dentro) y otra con
+**PyTorch**, que puede entrenar en la **GPU** (CUDA). Y el proyecto **va mejorando por etapas**: mira la
+[hoja de ruta](#-hoja-de-ruta-cómo-ha-ido-mejorando-la-serpiente). Nadie le explica las reglas ni le enseña a jugar: solo recibe
 puntos cuando se come una manzana y pierde puntos cuando se estrella.
 
 Lo mejor: **puedes ver su "cerebro" funcionando**, neurona a neurona, mientras aprende y mientras juega.
@@ -25,7 +26,7 @@ Lo mejor: **puedes ver su "cerebro" funcionando**, neurona a neurona, mientras a
 6. [Arquitectura del proyecto](#-arquitectura-del-proyecto)
 7. [Todos los comandos](#-todos-los-comandos)
 8. [Experimentos que puedes probar](#-experimentos-que-puedes-probar)
-9. [Limitaciones y siguientes pasos](#-limitaciones-y-siguientes-pasos)
+9. [Hoja de ruta: cómo ha ido mejorando](#-hoja-de-ruta-cómo-ha-ido-mejorando-la-serpiente)
 10. [Glosario](#-glosario)
 11. [Tests y licencia](#-tests)
 
@@ -56,15 +57,16 @@ Controles de la ventana de visualización: `↑`/`↓` cambian la velocidad (Len
 > [Versión PyTorch y GPU](#-versión-pytorch-y-gpu-cuda). Y si quieres guardar un GIF de lo que ves, añade
 > `--record salida.gif` a `train` o `watch`.
 
-### Los dos modelos incluidos
+### Los modelos incluidos
 
-El repositorio trae **dos redes ya entrenadas**, con la misma estructura y el mismo formato (`.npz`), así que se
-ven con el mismo comando:
+El repositorio trae **tres redes ya entrenadas**, en el mismo formato (`.npz`). Cada una guarda dentro qué
+"pistas" recibe, así que todas se ven con el mismo comando:
 
 | Modelo | Cómo se entrenó | Archivo | Comando para verlo |
 |---|---|---|---|
-| **NumPy** | Red hecha a mano, en CPU, 2000 partidas | `models/pretrained.npz` | `python main.py watch` |
-| **PyTorch + GPU** | PyTorch en una RTX 3060 (CUDA), 1500 partidas | `models/pretrained_gpu.npz` | `python main.py watch --model models/pretrained_gpu.npz` |
+| **NumPy** (pistas `basico`, 14) | Red hecha a mano, en CPU, 2000 partidas | `models/pretrained.npz` | `python main.py watch` |
+| **PyTorch + GPU** (pistas `basico`, 14) | PyTorch en una RTX 3060 (CUDA), 1500 partidas | `models/pretrained_gpu.npz` | `python main.py watch --model models/pretrained_gpu.npz` |
+| **Con la cola** (pistas `cola`, 17) ⭐ el mejor | NumPy, CPU, 2000 partidas | `models/pretrained_cola.npz` | `python main.py watch --model models/pretrained_cola.npz` |
 
 Para compararlos de forma justa, que jueguen con las mismas manzanas usando la misma semilla:
 
@@ -118,6 +120,9 @@ La red recibe solo **14 números** con las pistas que necesita:
 | 4–7 | Mira arriba/derecha/abajo/izquierda | Hacia dónde mira ahora (solo una vale 1) |
 | 8–11 | Comida arriba/derecha/abajo/izquierda | Dónde está la manzana respecto a la cabeza |
 | 12–14 | Espacio recto/derecha/izquierda | **Cuánto espacio libre alcanzable** quedaría tras ese movimiento (de 0 a 1) |
+
+> Este es el juego de pistas `basico`. El modelo con la cola usa 3 más (ver
+> [Modelo 2](#modelo-2--la-serpiente-que-sabe-dónde-está-su-cola)): se elige con `train --features cola`.
 
 Las 11 primeras valen 0 o 1. Las 3 últimas son las que evitan que la serpiente **se encierre a sí misma**:
 miden con una búsqueda por inundación (*flood fill*) cuántas casillas libres se pueden alcanzar tras cada
@@ -246,6 +251,7 @@ Medido en 300 partidas sin azar, con una semilla que no se usó para elegir el m
 | Red con 11 entradas (versión anterior, solo peligros cercanos) | 20,1 | 37 |
 | **Red con 14 entradas (con espacio libre), modelo NumPy** | **36,5** | **55** |
 | **Red con 14 entradas (con espacio libre), modelo PyTorch + GPU** | **38,5** | **63** |
+| **Red con 17 entradas (espacio libre dinámico + cola), modelo NumPy** ⭐ | **57,8** | **90** |
 
 Los dos modelos de 14 entradas rinden prácticamente igual: la diferencia de 2 manzanas está dentro del ruido
 entre entrenamientos (cada uno tuvo distinto número de partidas y el azar influye), así que **no significa que
@@ -382,7 +388,7 @@ snake-deep-learning/
 │   │   ├── network.py       #   Red neuronal: forward, backward, guardar/cargar
 │   │   └── optimizers.py    #   Adam
 │   ├── rl/                  # APRENDIZAJE POR REFUERZO
-│   │   ├── observation.py   #   Qué "ve" la red (las 14 entradas)
+│   │   ├── observation.py   #   Qué "ve" la red (juegos de pistas: basico = 14, cola = 17)
 │   │   ├── environment.py   #   Entorno + recompensas
 │   │   ├── replay_buffer.py #   Memoria de experiencias
 │   │   ├── dqn_agent.py     #   El agente DQN con NumPy (ε-greedy, red objetivo, Double DQN)
@@ -397,13 +403,15 @@ snake-deep-learning/
 │       └── plots.py         #   Gráfica final (matplotlib)
 ├── scripts/
 │   └── benchmark_backends.py  # Compara NumPy vs PyTorch CPU vs GPU
-├── tests/                   # 27 tests (reglas, gradientes, entrenamiento, NumPy≡PyTorch)
+├── tests/                   # 30 tests (reglas, gradientes, entrenamiento, NumPy≡PyTorch)
 ├── models/
 │   ├── pretrained.npz       # Red ya entrenada con NumPy (CPU)
 │   ├── pretrained_gpu.npz   # Red ya entrenada con PyTorch en GPU (CUDA)
+│   ├── pretrained_cola.npz  # Red con pistas de la cola (la mejor)
 │   ├── evolution/           # La red NumPy tras 100, 500, 1000 y 2000 partidas
 │   ├── history.csv          # Datos del entrenamiento NumPy
-│   └── history_gpu.csv      # Datos del entrenamiento PyTorch/GPU
+│   ├── history_gpu.csv      # Datos del entrenamiento PyTorch/GPU
+│   └── history_cola.csv     # Datos del entrenamiento del modelo con la cola
 └── docs/img/                # GIFs y gráficas del README
 ```
 
@@ -429,6 +437,7 @@ python main.py play  [--width 10 --height 10]
 
 python main.py train [--episodes 1500] [--hidden 24 24] [--lr 0.001] [--gamma 0.95] [--batch-size 64]
                      [--backend numpy|torch] [--device auto|cpu|cuda]
+                     [--features basico|cola]
                      [--width 10 --height 10] [--seed 42] [--out models]
                      [--render] [--speed Lento|Normal|Rápido|Turbo] [--record salida.gif]
 
@@ -462,17 +471,62 @@ Usa `--seed` para que dos entrenamientos sean comparables.
 
 ---
 
-## 🧭 Limitaciones y siguientes pasos
+## 🧭 Hoja de ruta: cómo ha ido mejorando la serpiente
 
-Con las entradas de espacio libre la serpiente evita muchas trampas, pero todavía no es perfecta: sigue
-muriendo casi siempre al chocar con su cuerpo cuando ya es muy larga. Su espacio libre es una estimación
-simple (no tiene en cuenta que la cola se va apartando) y no planifica varias jugadas por adelantado.
-Ideas para mejorarla:
+El proyecto avanza por etapas: cada una resuelve una limitación de la anterior y deja su modelo en el
+repositorio para poder compararlos. Esta tabla es el registro de esa evolución:
 
-- Calcular el espacio libre **teniendo en cuenta cómo se mueve la cola**, o añadir la distancia hasta la cola.
-- Pasar de este MLP a una **red convolucional** que reciba el tablero entero como imagen.
-- Aprovechar la **GPU** de verdad: ejecutar muchas partidas en paralelo o usar una red convolucional.
-- Probar **algoritmos genéticos** (neuroevolución) en vez de DQN y comparar.
+| Etapa | Qué se mejoró | Manzanas de media (10×10) | Estado |
+|---|---|---:|---|
+| **Modelo 0** | Red con 11 pistas (solo peligros cercanos). Se encerraba a sí misma. | 20,1 | ✅ (versión inicial) |
+| **Modelo 1** | + 3 pistas de espacio libre (flood fill). NumPy y PyTorch/GPU. | 36,5 (NumPy) · 38,5 (GPU) | ✅ `pretrained.npz`, `pretrained_gpu.npz` |
+| **Modelo 2** | El espacio libre tiene en cuenta cómo **se mueve la cola** + 3 pistas de "¿puedo llegar a mi cola?" | **57,8** | ✅ `pretrained_cola.npz` |
+| **Modelo 3** | Red **convolucional** que recibe el tablero entero como imagen | – | ⏳ pendiente |
+| **Modelo 4** | Aprovechar la **GPU** de verdad: muchas partidas en paralelo | – | ⏳ pendiente |
+| **Modelo 5** | **Algoritmos genéticos** (neuroevolución) en vez de DQN, para comparar | – | ⏳ pendiente |
+
+(Medido sin azar, en 300 partidas con una semilla que no se usó para entrenar. Las etapas ⏳ se irán
+completando y esta tabla se actualizará con cada una.)
+
+### Modelo 2 · La serpiente que sabe dónde está su cola
+
+**El problema.** El modelo 1 calculaba el espacio libre suponiendo que el cuerpo está quieto, salvo la cola.
+Pero la serpiente se mueve: cada paso libera un trozo de cuerpo. Así que a veces veía "callejón sin salida" donde
+en realidad el pasillo se iba a abrir a tiempo, y otras veces no distinguía una salida real de una trampa.
+
+**La solución** (en [`game/board.py`](snake_ai/game/board.py), `escape_info`, y [`rl/observation.py`](snake_ai/rl/observation.py)):
+
+1. **Espacio libre "con el tiempo"**: en la búsqueda por inundación, una casilla ocupada por el trozo de
+   cuerpo que está a *k* pasos de la cola cuenta como libre si la cabeza llega allí después del paso *k*.
+2. **3 pistas nuevas** (*Cola recto / derecha / izquierda*): tras ese movimiento, ¿existe un camino hasta mi
+   propia cola? Si lo hay, siempre habrá por dónde salir (la cola siempre se aparta). Es el truco clásico de
+   los buenos jugadores de Snake. La red pasa de 14 a **17 entradas** (1.107 pesos).
+
+**El resultado.** Mismo algoritmo, misma red de 24+24 neuronas, mismas 2000 partidas y misma semilla (1);
+solo cambian las pistas (300 partidas sin azar):
+
+| Entrenamiento | Manzanas de media | Récord | Cómo murió |
+|---|---:|---:|---|
+| Pistas `basico` | 35,7 | 57 | cuerpo 87 %, pared 13 % |
+| **Pistas `cola`** (`pretrained_cola.npz`) | **57,8** | **90** | cuerpo 77 %, pared 19 %, hambre 4 % |
+
+Con otra semilla de entrenamiento (2) el resultado se mantiene (`basico` 37,7 · `cola` 55,6), así que **no es
+suerte de un entrenamiento**: es un +55 % solo por dar mejores pistas. En ese segundo entrenamiento la serpiente
+llegó incluso a **completar el tablero entero** (97 manzanas) en una de las 300 partidas.
+
+```bash
+python main.py watch --model models/pretrained_cola.npz                  # verla jugar
+python main.py train --features cola --render                            # entrenarla tú, viendo el cerebro
+```
+
+| Curva de aprendizaje (con azar) | La red jugando |
+|:---:|:---:|
+| ![Curva del modelo con cola](docs/img/training_cola.png) | ![Modelo con cola jugando](docs/img/ia-cola.gif) |
+
+### Limitaciones que quedan
+
+Aún muere sobre todo chocando con su cuerpo cuando ya es muy larga, y no planifica varias jugadas por
+adelantado. Eso es lo que atacan las etapas pendientes de la tabla de arriba.
 
 ---
 

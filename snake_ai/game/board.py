@@ -79,6 +79,36 @@ class SnakeGame:
                     frontier.append(nxt)
         return min(len(seen), limit)
 
+    def escape_info(self, start: Position, limit: int) -> tuple[int, bool]:
+        """Como `reachable_cells`, pero teniendo en cuenta que la cola SE VA APARTANDO.
+
+        Al avanzar, la serpiente libera su cola trozo a trozo: la celda que ocupa el trozo k-ésimo
+        (contando desde la cola, que es el 0) estará libre cuando la cabeza llegue allí en el
+        paso k o posterior. Así un "pasillo" cerrado por la cola ya no cuenta como callejón: se
+        abrirá a tiempo. Devuelve (celdas alcanzables, hasta `limit`; ¿se puede llegar hasta la cola?).
+        Poder llegar a la cola es la señal clásica de que la serpiente siempre tendrá por dónde salir.
+        """
+        if self.is_dangerous(start):
+            return 0, False
+        body = list(self.snake.body)
+        frees_at = {cell: len(body) - 1 - i for i, cell in enumerate(body)}  # cola = 0
+        tail = body[-1]
+        seen = {start}
+        frontier = [start]
+        step = 1  # la cabeza llega a `start` en el paso 1
+        while frontier:
+            step += 1
+            nxt_frontier = []
+            for x, y in frontier:
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nxt = (x + dx, y + dy)
+                    if nxt in seen or self.is_wall(nxt) or frees_at.get(nxt, -1) >= step:
+                        continue
+                    seen.add(nxt)
+                    nxt_frontier.append(nxt)
+            frontier = nxt_frontier
+        return min(len(seen), limit), tail in seen
+
     @property
     def idle_limit(self) -> int:
         return self.idle_limit_factor * len(self.snake)

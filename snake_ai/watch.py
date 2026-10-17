@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from .nn import NeuralNetwork
-from .rl import N_FEATURES, SnakeEnv
+from .rl import DEFAULT_FEATURES, FEATURE_SETS, SnakeEnv
 from .viz.dashboard import Dashboard
 from .viz.recorder import GifRecorder
 
@@ -13,19 +13,22 @@ from .viz.recorder import GifRecorder
 def run_watch(model_path: str | Path, width: int | None, height: int | None, games: int,
               speed: str, record: str | None, seed: int | None) -> None:
     network, meta = NeuralNetwork.load(model_path)
-    if network.sizes[0] != N_FEATURES:
+    # Cada modelo guarda qué pistas usa (los antiguos no lo dicen: son las "basico").
+    features = str(meta.get("features", DEFAULT_FEATURES))
+    if features not in FEATURE_SETS or len(FEATURE_SETS[features]) != network.sizes[0]:
         raise SystemExit(
-            f"Este modelo espera {network.sizes[0]} entradas pero el juego ahora da {N_FEATURES} "
-            "(se añadieron las pistas de espacio libre). Es de una versión anterior: vuelve a entrenarlo "
-            "con  python main.py train  o usa models/pretrained.npz."
+            f"Este modelo espera {network.sizes[0]} entradas y no coincide con ningún juego de pistas "
+            f"conocido ({', '.join(f'{k}={len(v)}' for k, v in FEATURE_SETS.items())}). Es de una versión "
+            "anterior: vuelve a entrenarlo con  python main.py train  o usa models/pretrained.npz."
         )
     # Si no se indica, se usa el tamaño de tablero con el que se entrenó.
     width = width or int(meta.get("width", 10))
     height = height or int(meta.get("height", 10))
-    env = SnakeEnv(width, height, seed=seed)
+    env = SnakeEnv(width, height, seed=seed, features=features)
 
     recorder = GifRecorder(record, fps=15, scale=0.45, max_frames=150) if record else None
     dash = Dashboard(f"Snake IA - {Path(model_path).name}", speed=speed, recorder=recorder)
+    dash.feature_names = env.feature_names
     scores: list[int] = []
     try:
         for game_number in range(1, games + 1):

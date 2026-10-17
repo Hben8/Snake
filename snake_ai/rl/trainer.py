@@ -93,7 +93,7 @@ class Trainer:
     def run(self) -> TrainingHistory:
         cfg = self.config
         out = Path(cfg.out_dir)
-        meta = {"width": self.env.game.width, "height": self.env.game.height}
+        meta = {"width": self.env.game.width, "height": self.env.game.height, "features": self.env.features}
 
         for self.episode in range(1, cfg.episodes + 1):
             stats = self._run_episode()

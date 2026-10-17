@@ -10,7 +10,7 @@ import pygame
 
 from ..game import ACTION_NAMES, SnakeGame
 from ..nn import NeuralNetwork
-from ..rl.observation import FEATURE_NAMES
+from ..rl.observation import FEATURE_NAMES as DEFAULT_FEATURE_NAMES
 from ..rl.trainer import Observer
 from . import theme
 from .board_view import draw_board
@@ -34,6 +34,7 @@ class Dashboard:
         self.speed_index = next((i for i, (n, _) in enumerate(SPEEDS) if n.lower() == speed.lower()), 1)
         self.paused = False
         self.closed = False
+        self.feature_names = DEFAULT_FEATURE_NAMES  # nombres de las entradas de la red
         self.chart_slots: int | None = None  # nº final de puntos de la gráfica (ver draw_chart)
         self.chart_window = 50  # ventana de la media móvil de la gráfica (1 = sin suavizar)
         self.footer: str | None = None  # None = controles por defecto; "" = nada
@@ -111,7 +112,7 @@ class Dashboard:
 
         draw_board(screen, pygame.Rect(30, 90, 590, 590), game)
         draw_network(screen, pygame.Rect(650, 12, 620, 440), network, obs,
-                     FEATURE_NAMES, ACTION_NAMES, action, explored)
+                     self.feature_names, ACTION_NAMES, action, explored)
         draw_chart(screen, pygame.Rect(650, 466, 620, 214), scores, chart_title, window=self.chart_window,
                    slots=self.chart_slots)
 
@@ -151,6 +152,7 @@ class DashboardObserver(Observer):
 
     def on_decision(self, trainer, obs, action, explored) -> bool:
         game = trainer.env.game
+        self.dashboard.feature_names = trainer.env.feature_names
         stats = [
             ("Episodio", f"{trainer.episode}/{trainer.config.episodes}"),
             ("Manzanas", str(game.score)),

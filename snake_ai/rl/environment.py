@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..game import Action, SnakeGame
-from .observation import N_FEATURES, observe
+from .observation import DEFAULT_FEATURES, feature_names, observe
 
 
 @dataclass
@@ -18,17 +18,19 @@ class RewardConfig:
 
 
 class SnakeEnv:
-    n_inputs = N_FEATURES
     n_actions = len(Action)
 
     def __init__(self, width: int = 10, height: int = 10, seed: int | None = None,
-                 rewards: RewardConfig | None = None):
+                 rewards: RewardConfig | None = None, features: str = DEFAULT_FEATURES):
+        self.features = features  # qué juego de pistas ve la red (ver observation.py)
+        self.feature_names = feature_names(features)
+        self.n_inputs = len(self.feature_names)
         self.game = SnakeGame(width, height, seed=seed)
         self.rewards = rewards or RewardConfig()
 
     def reset(self) -> np.ndarray:
         self.game.reset()
-        return observe(self.game)
+        return observe(self.game, self.features)
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, dict]:
         before = self._distance_to_food()
@@ -42,7 +44,7 @@ class SnakeEnv:
             reward = self.rewards.closer if self._distance_to_food() < before else self.rewards.farther
 
         info = {"score": self.game.score, "cause": outcome.cause, "won": outcome.won}
-        return observe(self.game), reward, self.game.done, info
+        return observe(self.game, self.features), reward, self.game.done, info
 
     def _distance_to_food(self) -> int:
         if self.game.food is None:
