@@ -71,3 +71,23 @@ def plot_evolution(history: EvolutionHistory, out_path: str | Path) -> None:
     fig.savefig(out_path, dpi=130, facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"Gráfica guardada en {out_path}")
+
+
+def plot_eval_curve(csv_path: str | Path, out_path: str | Path) -> None:
+    """Manzanas SIN azar medidas cada cierto número de partidas (entrenamiento en paralelo)."""
+    data = np.genfromtxt(csv_path, delimiter=",", names=True)
+    plt.style.use("dark_background")
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    fig.patch.set_facecolor("#0e111a")
+    ax.set_facecolor("#161a27")
+    ax.plot(data["episodes"], data["eval_score"], color="#ffd65a", linewidth=2.2, marker="o", markersize=4)
+    ax.set_title("Entrenamiento en paralelo: manzanas sin azar a lo largo del entrenamiento")
+    ax.set_xlabel("Partidas de entrenamiento (todas las paralelas)")
+    ax.set_ylabel("Manzanas de media (100 partidas sin azar)")
+    ax.set_ylim(bottom=0)
+    fig.tight_layout()
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=130, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    print(f"Gráfica guardada en {out_path}")

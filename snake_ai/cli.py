@@ -30,9 +30,22 @@ def build_parser() -> argparse.ArgumentParser:
                        help="numpy = red hecha a mano; torch = PyTorch (con GPU si hay)")
     train.add_argument("--device", default="auto",
                        help="solo con --backend torch: auto, cpu o cuda")
-    train.add_argument("--features", choices=sorted(FEATURE_SETS), default=DEFAULT_FEATURES,
-                       help="qué recibe la red: basico (14 pistas), cola (17 pistas) o imagen (el tablero entero; "
+    train.add_argument("--features", choices=sorted(FEATURE_SETS), default=None,
+                       help="qué recibe la red: basico (14 pistas, por defecto), cola (17 pistas; por defecto con --envs) o imagen (el tablero entero; "
                             "red convolucional, necesita --backend torch)")
+    train.add_argument("--envs", type=int, default=1,
+                       help="partidas simultáneas en la GPU (>1 = entrenamiento en paralelo; --episodes pasa a contar "
+                            "las partidas de TODAS; necesita --backend torch y pistas cola; sin ventana)")
+    train.add_argument("--updates-per-step", type=int, default=2,
+                       help="solo con --envs: pasos de aprendizaje por cada paso de todas las partidas")
+    train.add_argument("--epsilon-steps", type=int, default=300_000,
+                       help="solo con --envs: jugadas (entre todas las partidas) que tarda el azar en bajar a 0,01")
+    train.add_argument("--epsilon-end", type=float, default=0.01,
+                       help="solo con --envs: probabilidad mínima de jugar al azar (con red grande va mejor 0,1)")
+    train.add_argument("--buffer-size", type=int, default=200_000,
+                       help="solo con --envs: experiencias que guarda la memoria (en la GPU)")
+    train.add_argument("--eval-every", type=int, default=1000,
+                       help="solo con --envs: cada cuántas partidas se mide la red sin azar (y se guarda la mejor)")
     train.add_argument("--gamma", type=float, default=0.95, help="importancia del futuro (0-1)")
     train.add_argument("--seed", type=int, default=None, help="semilla para repetir resultados")
     train.add_argument("--out", default="models", help="carpeta donde guardar modelos e historial")
@@ -86,8 +99,35 @@ def make_agent(backend: str, env: SnakeEnv, config: DQNConfig, seed: int | None,
     return DQNAgent(env.n_inputs, env.n_actions, config, seed=seed)
 
 
+def _train_parallel(args: argparse.Namespace) -> None:
+    if args.backend != "torch":
+        raise SystemExit("El entrenamiento en paralelo (--envs) vive en la GPU: añade  --backend torch  "
+                         "(y  --device cuda  si tienes GPU NVIDIA).")
+    if args.features not in (None, "cola"):
+        raise SystemExit("El entrenamiento en paralelo solo está implementado para las pistas 'cola' (--features cola).")
+    if args.render or args.record:
+        raise SystemExit("Con --envs no hay ventana (las partidas están dentro de la GPU). "
+                         "Mira el resultado después con  python main.py watch --model <carpeta>/best.npz")
+    from .rl.parallel_trainer import ParallelConfig, ParallelTrainer
+    config = ParallelConfig(
+        episodes=args.episodes, n_envs=args.envs, hidden=tuple(args.hidden), lr=args.lr, gamma=args.gamma,
+        batch_size=args.batch_size, updates_per_step=args.updates_per_step, epsilon_steps=args.epsilon_steps,
+        epsilon_end=args.epsilon_end, buffer_size=args.buffer_size, eval_every=args.eval_every, eval_games=100,
+        width=args.width, height=args.height, device=args.device, out_dir=args.out)
+    trainer = ParallelTrainer(config, seed=args.seed)
+    print(f"Backend: PyTorch en {trainer.device} | {args.envs} partidas en paralelo")
+    try:
+        history = trainer.run()
+    except KeyboardInterrupt:
+        history = trainer.history
+        print("\nEntrenamiento interrumpido.")
+    print(f"Listo. Mejor modelo en {args.out}/best.npz | mejor medida sin azar: {trainer.best_eval:.1f} manzanas")
+
+
 def _train(args: argparse.Namespace) -> None:
-    env = SnakeEnv(args.width, args.height, seed=args.seed, features=args.features)
+    if args.envs > 1:
+        return _train_parallel(args)
+    env = SnakeEnv(args.width, args.height, seed=args.seed, features=args.features or DEFAULT_FEATURES)
     config = DQNConfig(hidden=tuple(args.hidden), lr=args.lr, gamma=args.gamma,
                        batch_size=args.batch_size)
     agent = make_agent(args.backend, env, config, args.seed, args.device)
@@ -169,10 +209,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         run_watch(args.model, args.width, args.height, args.games, args.speed, args.record, args.seed)
     elif args.command == "plot":
-        from .viz.plots import plot_evolution, plot_history
+        from .viz.plots import plot_eval_curve, plot_evolution, plot_history
         with open(args.history, encoding="utf-8") as f:
-            is_evolution = f.readline().startswith("generation")
-        if is_evolution:
+            header = f.readline()
+        if header.startswith("episodes,eval_score"):
+            plot_eval_curve(args.history, args.out)
+        elif header.startswith("generation"):
             plot_evolution(EvolutionHistory.load_csv(args.history), args.out)
         else:
             plot_history(TrainingHistory.load_csv(args.history), args.out)
