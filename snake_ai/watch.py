@@ -4,20 +4,21 @@ from pathlib import Path
 
 import numpy as np
 
-from .nn import NeuralNetwork
 from .rl import DEFAULT_FEATURES, FEATURE_SETS, SnakeEnv
+from .rl.model_io import load_model
 from .viz.dashboard import Dashboard
 from .viz.recorder import GifRecorder
 
 
 def run_watch(model_path: str | Path, width: int | None, height: int | None, games: int,
               speed: str, record: str | None, seed: int | None) -> None:
-    network, meta = NeuralNetwork.load(model_path)
+    network, meta = load_model(model_path)
     # Cada modelo guarda qué pistas usa (los antiguos no lo dicen: son las "basico").
     features = str(meta.get("features", DEFAULT_FEATURES))
-    if features not in FEATURE_SETS or len(FEATURE_SETS[features]) != network.sizes[0]:
+    n_inputs = int(np.prod(network.obs_shape)) if getattr(network, "is_conv", False) else network.sizes[0]
+    if features not in FEATURE_SETS or (features != "imagen" and len(FEATURE_SETS[features]) != n_inputs):
         raise SystemExit(
-            f"Este modelo espera {network.sizes[0]} entradas y no coincide con ningún juego de pistas "
+            f"Este modelo espera {n_inputs} entradas y no coincide con ningún juego de pistas "
             f"conocido ({', '.join(f'{k}={len(v)}' for k, v in FEATURE_SETS.items())}). Es de una versión "
             "anterior: vuelve a entrenarlo con  python main.py train  o usa models/pretrained.npz."
         )

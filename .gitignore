@@ -11,10 +11,14 @@ models/*
 !models/pretrained.npz
 !models/pretrained_gpu.npz
 !models/pretrained_cola.npz
+!models/pretrained_cnn.npz
+!models/pretrained_evolution.npz
 !models/evolution/
 !models/history.csv
 !models/history_gpu.csv
 !models/history_cola.csv
+!models/history_cnn.csv
+!models/history_evolution.csv
 
 # Material para redes sociales (vídeos e imágenes) y el script local que lo genera: no se sube
 linkedin/

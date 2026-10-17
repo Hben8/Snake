@@ -83,25 +83,93 @@ class QNetwork(nn.Module):
         np.savez(path, **data)
 
 
+class ConvQNetwork(nn.Module):
+    """Red CONVOLUCIONAL: recibe el tablero como imagen (canales × alto × ancho) y devuelve 3 valores Q.
+
+        imagen ─► conv 3×3 (16 mapas) ─► conv 3×3 (32 mapas) ─► aplanar ─► capa densa (128) ─► 3 valores Q
+
+    Una convolución desliza el mismo pequeño filtro por todo el tablero: así detecta "pared a la derecha"
+    o "hueco cerrado" en cualquier sitio sin tener que aprenderlo celda a celda. Aquí es donde la GPU
+    sí compensa: son cientos de miles de operaciones por decisión.
+    """
+
+    is_conv = True
+
+    def __init__(self, obs_shape: tuple[int, int, int], n_actions: int = 3):
+        super().__init__()
+        self.obs_shape = tuple(int(s) for s in obs_shape)
+        self.n_actions = n_actions
+        c, h, w = self.obs_shape
+        self.conv1 = nn.Conv2d(c, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.dense = nn.Linear(32 * h * w, 128)
+        self.out = nn.Linear(128, n_actions)
+        for layer in (self.conv1, self.conv2, self.dense, self.out):
+            nn.init.kaiming_normal_(layer.weight, nonlinearity="relu")
+            nn.init.zeros_(layer.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        return self.out(F.relu(self.dense(x.flatten(1))))
+
+    @property
+    def device(self) -> torch.device:
+        return self.conv1.weight.device
+
+    @torch.no_grad()
+    def activations(self, x: np.ndarray) -> list[np.ndarray]:
+        """[imagen, mapas de conv1, mapas de conv2, capa densa, valores Q] para UNA imagen (para visualizar)."""
+        a = torch.as_tensor(np.asarray(x, dtype=np.float32), device=self.device)[None]
+        c1 = F.relu(self.conv1(a))
+        c2 = F.relu(self.conv2(c1))
+        d = F.relu(self.dense(c2.flatten(1)))
+        q = self.out(d)
+        return [t[0].cpu().numpy() for t in (a, c1, c2, d, q)]
+
+    def save(self, path: str | Path, **meta) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {"arch": np.asarray("cnn"), "obs_shape": np.array(self.obs_shape), "n_actions": np.asarray(self.n_actions)}
+        data.update({f"p_{k}": v.detach().cpu().numpy() for k, v in self.state_dict().items()})
+        data.update({f"meta_{k}": np.asarray(v) for k, v in meta.items()})
+        np.savez(path, **data)
+
+    @classmethod
+    def load(cls, path: str | Path, device: str = "cpu") -> tuple["ConvQNetwork", dict]:
+        with np.load(Path(path)) as data:
+            net = cls(tuple(int(s) for s in data["obs_shape"]), int(data["n_actions"]))
+            net.load_state_dict({k[2:]: torch.as_tensor(data[k]) for k in data.files if k.startswith("p_")})
+            meta = {k[5:]: data[k].item() for k in data.files if k.startswith("meta_")}
+        return net.to(resolve_device(device)).eval(), meta
+
+
 class TorchDQNAgent:
     def __init__(self, n_inputs: int, n_actions: int, config: DQNConfig | None = None,
-                 seed: int | None = None, device: str = "auto", loss_log_every: int = 50):
+                 seed: int | None = None, device: str = "auto", loss_log_every: int = 50,
+                 obs_shape: tuple[int, ...] | None = None):
         self.config = config or DQNConfig()
         self.n_actions = n_actions
         self.device = resolve_device(device)
         if seed is not None:
             torch.manual_seed(seed)
 
-        sizes = [n_inputs, *self.config.hidden, n_actions]
-        self.online = QNetwork(sizes).to(self.device)
-        self.target = QNetwork(sizes).to(self.device)
+        # Con una imagen como entrada (obs_shape de 3 dimensiones) la red es convolucional.
+        self.obs_shape = tuple(obs_shape) if obs_shape else (n_inputs,)
+        if len(self.obs_shape) == 3:
+            self.online = ConvQNetwork(self.obs_shape, n_actions).to(self.device)
+            self.target = ConvQNetwork(self.obs_shape, n_actions).to(self.device)
+        else:
+            sizes = [n_inputs, *self.config.hidden, n_actions]
+            self.online = QNetwork(sizes).to(self.device)
+            self.target = QNetwork(sizes).to(self.device)
         self.target.load_state_dict(self.online.state_dict())
         self.target.requires_grad_(False)
         self.optimizer = torch.optim.Adam(self.online.parameters(), lr=self.config.lr)
 
         # La memoria vive en la CPU (añadir 1 experiencia por paso a la GPU saldría más caro);
         # lo que viaja a la GPU es el lote entero, de una vez.
-        self.buffer = ReplayBuffer(self.config.buffer_size, n_inputs, seed=seed)
+        self.buffer = ReplayBuffer(self.config.buffer_size, self.obs_shape, seed=seed)
         self.epsilon = self.config.epsilon_start
         self.learn_steps = 0
         self._rng = np.random.default_rng(seed)
@@ -115,7 +183,7 @@ class TorchDQNAgent:
         if explore and self._rng.random() < self.epsilon:
             return int(self._rng.integers(self.n_actions)), True
         with torch.no_grad():
-            q = self.online(torch.as_tensor(obs, device=self.device))
+            q = self.online(torch.as_tensor(obs, device=self.device)[None])
             return int(q.argmax().item()), False
 
     def remember(self, state, action, reward, next_state, done) -> None:
@@ -129,11 +197,13 @@ class TorchDQNAgent:
 
         # Un solo viaje CPU -> GPU con todo el lote empaquetado (varias copias pequeñas serían más lentas).
         states, actions, rewards, next_states, dones = self.buffer.sample(cfg.batch_size)
+        batch = states.shape[0]
+        states, next_states = states.reshape(batch, -1), next_states.reshape(batch, -1)
         n = states.shape[1]
         packed = np.concatenate([states, next_states, actions[:, None], rewards[:, None], dones[:, None]],
                                 axis=1).astype(np.float32, copy=False)
         packed = torch.as_tensor(packed).to(self.device, non_blocking=True)
-        s, ns = packed[:, :n], packed[:, n:2 * n]
+        s, ns = packed[:, :n].reshape(batch, *self.obs_shape), packed[:, n:2 * n].reshape(batch, *self.obs_shape)
         a, r, d = packed[:, 2 * n].long(), packed[:, 2 * n + 1], packed[:, 2 * n + 2]
 
         with torch.no_grad():

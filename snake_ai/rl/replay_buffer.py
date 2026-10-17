@@ -9,12 +9,14 @@ import numpy as np
 
 
 class ReplayBuffer:
-    def __init__(self, capacity: int, n_inputs: int, seed: int | None = None):
+    def __init__(self, capacity: int, n_inputs: int | tuple[int, ...], seed: int | None = None):
+        """`n_inputs`: tamaño del vector de entrada, o su forma completa (p. ej. una imagen)."""
+        shape = (n_inputs,) if isinstance(n_inputs, int) else tuple(n_inputs)
         self.capacity = capacity
-        self.states = np.zeros((capacity, n_inputs), dtype=np.float32)
+        self.states = np.zeros((capacity, *shape), dtype=np.float32)
         self.actions = np.zeros(capacity, dtype=np.int64)
         self.rewards = np.zeros(capacity, dtype=np.float32)
-        self.next_states = np.zeros((capacity, n_inputs), dtype=np.float32)
+        self.next_states = np.zeros((capacity, *shape), dtype=np.float32)
         self.dones = np.zeros(capacity, dtype=np.float32)
         self._next = 0
         self._size = 0

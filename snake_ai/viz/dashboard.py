@@ -11,10 +11,12 @@ import pygame
 from ..game import ACTION_NAMES, SnakeGame
 from ..nn import NeuralNetwork
 from ..rl.observation import FEATURE_NAMES as DEFAULT_FEATURE_NAMES
+from ..rl.evolution import EvolutionObserver, play_visible
 from ..rl.trainer import Observer
 from . import theme
 from .board_view import draw_board
 from .chart_view import draw_chart
+from .cnn_view import draw_cnn
 from .network_view import draw_network
 from .recorder import GifRecorder
 
@@ -111,8 +113,11 @@ class Dashboard:
             x = r2.right + 22
 
         draw_board(screen, pygame.Rect(30, 90, 590, 590), game)
-        draw_network(screen, pygame.Rect(650, 12, 620, 440), network, obs,
-                     self.feature_names, ACTION_NAMES, action, explored)
+        if getattr(network, "is_conv", False):  # red convolucional: se dibujan mapas, no neuronas sueltas
+            draw_cnn(screen, pygame.Rect(650, 12, 620, 440), network, obs, ACTION_NAMES, action, explored)
+        else:
+            draw_network(screen, pygame.Rect(650, 12, 620, 440), network, obs,
+                         self.feature_names, ACTION_NAMES, action, explored)
         draw_chart(screen, pygame.Rect(650, 466, 620, 214), scores, chart_title, window=self.chart_window,
                    slots=self.chart_slots)
 
@@ -165,3 +170,28 @@ class DashboardObserver(Observer):
 
     def on_episode_end(self, trainer, stats) -> bool:
         return not self.dashboard.closed
+
+
+class EvolutionDashboardObserver(EvolutionObserver):
+    """Tras cada generación, el CAMPEÓN juega una partida a la vista: se ve cómo, generación a generación,
+    la red del mejor individuo va jugando mejor."""
+
+    def __init__(self, dashboard: Dashboard):
+        self.dashboard = dashboard
+
+    def on_generation(self, trainer, stats) -> bool:
+        dash = self.dashboard
+        dash.feature_names = trainer.env_names
+        dash.chart_window = 1
+        history = trainer.history.generations
+        scores = [g.best_score for g in history]
+
+        def stats_bar(game):
+            return [("Generación", f"{stats.generation}/{trainer.config.generations}"),
+                    ("Manzanas", str(game.score)),
+                    ("Mejor (media)", f"{stats.best_score:.1f}"),
+                    ("Población", f"{stats.mean_score:.1f}")]
+
+        return play_visible(trainer, stats.generation, lambda game, obs, action: dash.frame(
+            game, trainer.champion, obs, action, False, stats_bar(game), scores,
+            "Manzanas del mejor, por generación"))

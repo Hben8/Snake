@@ -1,10 +1,11 @@
-"""Línea de comandos:  python main.py {play,train,watch,plot} ..."""
+"""Línea de comandos:  python main.py {play,train,evolve,watch,plot} ..."""
 
 import argparse
 import sys
 
-from .rl import (DEFAULT_FEATURES, FEATURE_SETS, ConsoleLogger, DQNAgent, DQNConfig, SnakeEnv, TrainConfig,
-                 Trainer, TrainingHistory)
+from .rl import (DEFAULT_FEATURES, FEATURE_SETS, ConsoleLogger, DQNAgent, DQNConfig, EvolutionConfig,
+                 EvolutionConsoleLogger, EvolutionHistory, EvolutionTrainer, SnakeEnv, TrainConfig, Trainer,
+                 TrainingHistory)
 
 
 def _add_board_args(p: argparse.ArgumentParser, default: int | None = 10) -> None:
@@ -30,7 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--device", default="auto",
                        help="solo con --backend torch: auto, cpu o cuda")
     train.add_argument("--features", choices=sorted(FEATURE_SETS), default=DEFAULT_FEATURES,
-                       help="qué pistas recibe la red: basico (14) o cola (17, la serpiente sabe si puede salir)")
+                       help="qué recibe la red: basico (14 pistas), cola (17 pistas) o imagen (el tablero entero; "
+                            "red convolucional, necesita --backend torch)")
     train.add_argument("--gamma", type=float, default=0.95, help="importancia del futuro (0-1)")
     train.add_argument("--seed", type=int, default=None, help="semilla para repetir resultados")
     train.add_argument("--out", default="models", help="carpeta donde guardar modelos e historial")
@@ -38,6 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--speed", default="Rápido", choices=["Lento", "Normal", "Rápido", "Turbo"],
                        help="velocidad inicial de la ventana (con --render)")
     train.add_argument("--record", default=None, help="guardar un GIF de la ventana (con --render)")
+
+    evolve = sub.add_parser("evolve", help="entrena con algoritmo genético (neuroevolución, sin DQN)")
+    _add_board_args(evolve)
+    evolve.add_argument("--generations", type=int, default=150, help="generaciones")
+    evolve.add_argument("--population", type=int, default=150, help="redes en cada generación")
+    evolve.add_argument("--elite", type=int, default=10, help="mejores que pasan intactos a la siguiente")
+    evolve.add_argument("--games", type=int, default=3, help="partidas que juega cada red para ser evaluada")
+    evolve.add_argument("--mutation-rate", type=float, default=0.05, help="probabilidad de mutar cada peso")
+    evolve.add_argument("--mutation-sigma", type=float, default=0.2, help="tamaño de las mutaciones")
+    evolve.add_argument("--hidden", type=int, nargs="+", default=[24, 24], help="neuronas por capa oculta")
+    evolve.add_argument("--features", choices=sorted(FEATURE_SETS), default="cola", help="pistas de la red")
+    evolve.add_argument("--workers", type=int, default=0, help="procesos en paralelo (0 = automático)")
+    evolve.add_argument("--seed", type=int, default=None, help="semilla para repetir resultados")
+    evolve.add_argument("--out", default="models/evolution_run", help="carpeta donde guardar el resultado")
+    evolve.add_argument("--render", action="store_true", help="ver al campeón jugar tras cada generación")
+    evolve.add_argument("--speed", default="Rápido", choices=["Lento", "Normal", "Rápido", "Turbo"])
 
     watch = sub.add_parser("watch", help="ver jugar a una red entrenada")
     _add_board_args(watch, default=None)
@@ -54,9 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def make_agent(backend: str, env: SnakeEnv, config: DQNConfig, seed: int | None, device: str = "auto"):
+    if env.features == "imagen" and backend != "torch":
+        raise SystemExit("Las pistas 'imagen' usan una red convolucional: añade  --backend torch  "
+                         "(y mejor  --device cuda  si tienes GPU NVIDIA).")
     if backend == "torch":
         from .rl.torch_agent import TorchDQNAgent  # import perezoso: torch es opcional
-        agent = TorchDQNAgent(env.n_inputs, env.n_actions, config, seed=seed, device=device)
+        agent = TorchDQNAgent(env.n_inputs, env.n_actions, config, seed=seed, device=device,
+                              obs_shape=env.obs_shape)
         print(f"Backend: PyTorch en {agent.device}"
               + (f" ({__import__('torch').cuda.get_device_name(agent.device)})" if agent.device.type == "cuda" else ""))
         return agent
@@ -91,6 +113,43 @@ def _train(args: argparse.Namespace) -> None:
     print(f"Listo. Mejor modelo en {args.out}/best.npz | media final(50): {history.moving_average(50):.2f}")
 
 
+def _evolve(args: argparse.Namespace) -> None:
+    import numpy as np
+
+    from .rl.evolution import play
+    config = EvolutionConfig(
+        generations=args.generations, population=args.population, elite=args.elite,
+        games_per_individual=args.games, mutation_rate=args.mutation_rate, mutation_sigma=args.mutation_sigma,
+        hidden=tuple(args.hidden), features=args.features, width=args.width, height=args.height,
+        workers=args.workers, out_dir=args.out)
+    observers = [EvolutionConsoleLogger(every=5)]
+    dashboard = None
+    if args.render:
+        from .viz.dashboard import Dashboard, EvolutionDashboardObserver
+        dashboard = Dashboard("Snake IA - evolucionando", speed=args.speed)
+        observers.append(EvolutionDashboardObserver(dashboard))
+    trainer = EvolutionTrainer(config, observers, seed=args.seed)
+    try:
+        trainer.run()
+    except KeyboardInterrupt:
+        print("\nEvolución interrumpida.")
+    finally:
+        if dashboard is not None:
+            dashboard.close()
+    if trainer.champion is None:
+        return
+    # El ganador "de verdad": entre los mejores de la última generación, el que más manzanas hace en 100 partidas nuevas.
+    print("Eligiendo al mejor de los finalistas (100 partidas nuevas cada uno)...")
+    finalists = trainer.best_individuals(5)
+    averages = []
+    for net in finalists:
+        env = SnakeEnv(args.width, args.height, seed=2024, features=args.features)
+        averages.append(float(np.mean([play(net, env)[1] for _ in range(100)])))
+    best = int(np.argmax(averages))
+    finalists[best].save(f"{args.out}/best.npz", width=args.width, height=args.height, features=args.features)
+    print(f"Listo. Mejor modelo en {args.out}/best.npz | media en 100 partidas: {averages[best]:.1f} manzanas")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -99,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
         run_human(args.width, args.height)
     elif args.command == "train":
         _train(args)
+    elif args.command == "evolve":
+        _evolve(args)
     elif args.command == "watch":
         from pathlib import Path
 
@@ -108,6 +169,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         run_watch(args.model, args.width, args.height, args.games, args.speed, args.record, args.seed)
     elif args.command == "plot":
-        from .viz.plots import plot_history
-        plot_history(TrainingHistory.load_csv(args.history), args.out)
+        from .viz.plots import plot_evolution, plot_history
+        with open(args.history, encoding="utf-8") as f:
+            is_evolution = f.readline().startswith("generation")
+        if is_evolution:
+            plot_evolution(EvolutionHistory.load_csv(args.history), args.out)
+        else:
+            plot_history(TrainingHistory.load_csv(args.history), args.out)
     return 0

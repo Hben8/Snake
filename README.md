@@ -59,14 +59,16 @@ Controles de la ventana de visualización: `↑`/`↓` cambian la velocidad (Len
 
 ### Los modelos incluidos
 
-El repositorio trae **tres redes ya entrenadas**, en el mismo formato (`.npz`). Cada una guarda dentro qué
+El repositorio trae **cinco redes ya entrenadas**, en el mismo formato (`.npz`). Cada una guarda dentro qué
 "pistas" recibe, así que todas se ven con el mismo comando:
 
 | Modelo | Cómo se entrenó | Archivo | Comando para verlo |
 |---|---|---|---|
 | **NumPy** (pistas `basico`, 14) | Red hecha a mano, en CPU, 2000 partidas | `models/pretrained.npz` | `python main.py watch` |
 | **PyTorch + GPU** (pistas `basico`, 14) | PyTorch en una RTX 3060 (CUDA), 1500 partidas | `models/pretrained_gpu.npz` | `python main.py watch --model models/pretrained_gpu.npz` |
-| **Con la cola** (pistas `cola`, 17) ⭐ el mejor | NumPy, CPU, 2000 partidas | `models/pretrained_cola.npz` | `python main.py watch --model models/pretrained_cola.npz` |
+| **Con la cola** (pistas `cola`, 17) | NumPy, CPU, 2000 partidas | `models/pretrained_cola.npz` | `python main.py watch --model models/pretrained_cola.npz` |
+| **Convolucional** (la imagen del tablero) | PyTorch, GPU, 2000 partidas | `models/pretrained_cnn.npz` | `python main.py watch --model models/pretrained_cnn.npz` (necesita PyTorch) |
+| **Neuroevolución** (algoritmo genético) ⭐ el mejor | NumPy, CPU, 200 generaciones | `models/pretrained_evolution.npz` | `python main.py watch --model models/pretrained_evolution.npz` |
 
 Para compararlos de forma justa, que jueguen con las mismas manzanas usando la misma semilla:
 
@@ -371,7 +373,7 @@ flowchart LR
 
 ```
 snake-deep-learning/
-├── main.py                  # Punto de entrada: python main.py {play,train,watch,plot}
+├── main.py                  # Punto de entrada: python main.py {play,train,evolve,watch,plot}
 ├── requirements.txt         # Dependencias base (NumPy, pygame, matplotlib, Pillow)
 ├── requirements-torch.txt   # Opcional: PyTorch + instrucciones para CUDA
 ├── requirements-dev.txt     # Opcional: pytest, para ejecutar los tests
@@ -392,26 +394,33 @@ snake-deep-learning/
 │   │   ├── environment.py   #   Entorno + recompensas
 │   │   ├── replay_buffer.py #   Memoria de experiencias
 │   │   ├── dqn_agent.py     #   El agente DQN con NumPy (ε-greedy, red objetivo, Double DQN)
-│   │   ├── torch_agent.py   #   El mismo agente con PyTorch (CPU/GPU CUDA)
+│   │   ├── torch_agent.py   #   El mismo agente con PyTorch (CPU/GPU CUDA) y la red convolucional
+│   │   ├── evolution.py     #   Neuroevolución: algoritmo genético (alternativa al DQN)
+│   │   ├── model_io.py      #   Cargar cualquier modelo guardado (MLP o convolucional)
 │   │   └── trainer.py       #   Bucle de entrenamiento + historial + observadores
 │   └── viz/                 # VISUALIZACIÓN
 │       ├── dashboard.py     #   Ventana principal y controles
 │       ├── network_view.py  #   El cerebro con neuronas activándose
+│       ├── cnn_view.py      #   El cerebro de la red convolucional (mapas de filtros)
 │       ├── board_view.py    #   Tablero y serpiente
 │       ├── chart_view.py    #   Gráfica en vivo
 │       ├── recorder.py      #   Grabar GIFs
 │       └── plots.py         #   Gráfica final (matplotlib)
 ├── scripts/
 │   └── benchmark_backends.py  # Compara NumPy vs PyTorch CPU vs GPU
-├── tests/                   # 30 tests (reglas, gradientes, entrenamiento, NumPy≡PyTorch)
+├── tests/                   # tests (reglas, gradientes, entrenamiento, evolución, convolucional, NumPy≡PyTorch)
 ├── models/
 │   ├── pretrained.npz       # Red ya entrenada con NumPy (CPU)
 │   ├── pretrained_gpu.npz   # Red ya entrenada con PyTorch en GPU (CUDA)
-│   ├── pretrained_cola.npz  # Red con pistas de la cola (la mejor)
+│   ├── pretrained_cola.npz  # Red con pistas de la cola (modelo 2)
+│   ├── pretrained_cnn.npz   # Red convolucional (modelo 3)
+│   ├── pretrained_evolution.npz  # Red entrenada por neuroevolución (modelo 5, la mejor)
 │   ├── evolution/           # La red NumPy tras 100, 500, 1000 y 2000 partidas
 │   ├── history.csv          # Datos del entrenamiento NumPy
 │   ├── history_gpu.csv      # Datos del entrenamiento PyTorch/GPU
-│   └── history_cola.csv     # Datos del entrenamiento del modelo con la cola
+│   ├── history_cola.csv     # Datos del entrenamiento del modelo con la cola
+│   ├── history_cnn.csv      # Datos del entrenamiento de la convolucional
+│   └── history_evolution.csv  # Datos de la evolución (por generación)
 └── docs/img/                # GIFs y gráficas del README
 ```
 
@@ -437,9 +446,13 @@ python main.py play  [--width 10 --height 10]
 
 python main.py train [--episodes 1500] [--hidden 24 24] [--lr 0.001] [--gamma 0.95] [--batch-size 64]
                      [--backend numpy|torch] [--device auto|cpu|cuda]
-                     [--features basico|cola]
+                     [--features basico|cola|imagen]
                      [--width 10 --height 10] [--seed 42] [--out models]
                      [--render] [--speed Lento|Normal|Rápido|Turbo] [--record salida.gif]
+
+python main.py evolve [--generations 150] [--population 150] [--elite 10] [--games 3]
+                     [--mutation-rate 0.05] [--mutation-sigma 0.2] [--features cola]
+                     [--workers 0] [--seed 1] [--out models/evolution_run] [--render]
 
 python main.py watch [--model models/pretrained.npz] [--games 20] [--speed Normal]
                      [--width 20 --height 20] [--seed 1] [--record salida.gif]
@@ -481,12 +494,12 @@ repositorio para poder compararlos. Esta tabla es el registro de esa evolución:
 | **Modelo 0** | Red con 11 pistas (solo peligros cercanos). Se encerraba a sí misma. | 20,1 | ✅ (versión inicial) |
 | **Modelo 1** | + 3 pistas de espacio libre (flood fill). NumPy y PyTorch/GPU. | 36,5 (NumPy) · 38,5 (GPU) | ✅ `pretrained.npz`, `pretrained_gpu.npz` |
 | **Modelo 2** | El espacio libre tiene en cuenta cómo **se mueve la cola** + 3 pistas de "¿puedo llegar a mi cola?" | **57,8** | ✅ `pretrained_cola.npz` |
-| **Modelo 3** | Red **convolucional** que recibe el tablero entero como imagen | – | ⏳ pendiente |
+| **Modelo 3** | Red **convolucional** que recibe el tablero entero como imagen (sin pistas hechas a mano) | 20,4 | ✅ `pretrained_cnn.npz` (peor que el 2: ver por qué) |
 | **Modelo 4** | Aprovechar la **GPU** de verdad: muchas partidas en paralelo | – | ⏳ pendiente |
-| **Modelo 5** | **Algoritmos genéticos** (neuroevolución) en vez de DQN, para comparar | – | ⏳ pendiente |
+| **Modelo 5** | **Algoritmos genéticos** (neuroevolución) en vez de DQN, para comparar | **76,2** | ✅ `pretrained_evolution.npz` ⭐ |
 
-(Medido sin azar, en 300 partidas con una semilla que no se usó para entrenar. Las etapas ⏳ se irán
-completando y esta tabla se actualizará con cada una.)
+(Medido sin azar, en 300 partidas con una semilla que no se usó para entrenar. La etapa ⏳ se completará y
+esta tabla se actualizará.)
 
 ### Modelo 2 · La serpiente que sabe dónde está su cola
 
@@ -523,10 +536,91 @@ python main.py train --features cola --render                            # entre
 |:---:|:---:|
 | ![Curva del modelo con cola](docs/img/training_cola.png) | ![Modelo con cola jugando](docs/img/ia-cola.gif) |
 
-### Limitaciones que quedan
+### Modelo 3 · La red convolucional: ver el tablero como una imagen
 
-Aún muere sobre todo chocando con su cuerpo cuando ya es muy larga, y no planifica varias jugadas por
-adelantado. Eso es lo que atacan las etapas pendientes de la tabla de arriba.
+**La idea.** Hasta ahora, nosotros calculábamos las pistas (peligro, espacio libre, cola...). ¿Y si la red
+recibiera **la foto del tablero** y descubriera sola todo eso? Es lo que hacen las redes convolucionales con
+las imágenes.
+
+**Cómo funciona** ([`rl/torch_agent.py`](snake_ai/rl/torch_agent.py), `ConvQNetwork`):
+
+- **Entrada**: el tablero como imagen de 4 canales (pared, cuerpo, cabeza, comida), de 12×12. Se **gira** para
+  que la serpiente siempre mire hacia arriba, así "recto" siempre es "arriba". El canal del cuerpo vale más
+  cuanto más tarde se aparta ese trozo (la cola vale poco).
+- **Red**: 2 capas convolucionales (16 y 32 filtros de 3×3) → capa densa de 128 neuronas → 3 valores Q.
+  Son ~596.000 pesos (el modelo 2 tiene 1.107). Aquí la GPU **sí compensa**.
+- **Visualización**: ya no hay neuronas sueltas, sino **mapas**: cada filtro dibuja dónde detecta "su" patrón.
+  Se ve con `python main.py watch --model models/pretrained_cnn.npz`.
+
+```bash
+python main.py train --features imagen --backend torch --device cuda --lr 0.0003 --episodes 2000 --render
+```
+
+**El resultado: peor que el modelo 2, y es una lección importante.**
+
+| Modelo | Manzanas de media | Récord | Cómo murió (300 partidas) |
+|---|---:|---:|---|
+| Modelo 2, pistas `cola` (1.107 pesos) | 57,2 | 88 | cuerpo 78 %, pared 20 %, hambre 2 % |
+| **Modelo 3, convolucional (596.000 pesos)** | **20,4** | **34** | cuerpo 97 %, pared 3 % |
+
+La convolucional aprende bien lo básico (casi nunca choca con la pared) pero **no descubre sola cómo evitar
+encerrarse**: eso exige "razonar" sobre caminos y huecos, y es justo lo que le dábamos hecho con el flood fill.
+Con 2000 partidas no le basta. Conclusión: **una red 500 veces mayor no compensa unas buenas pistas**; la
+imagen necesitaría muchas más partidas (o ayudas como más datos o mejores recompensas). La GPU deja de ser un
+problema, pero el cuello de botella pasa a ser *cuánto tiene que aprender*. (Medido con la semilla 777, que no
+se usó para entrenar; con la semilla 2024 salió 21,2 de media.)
+
+| Curva de aprendizaje (con azar) | La red jugando |
+|:---:|:---:|
+| ![Curva del modelo convolucional](docs/img/training_cnn.png) | ![Modelo convolucional jugando](docs/img/ia-cnn.gif) |
+
+### Modelo 5 · Neuroevolución: aprender sin retropropagación
+
+**La idea.** En vez de ajustar los pesos de una red con gradientes (DQN), se imita a la evolución natural
+([`rl/evolution.py`](snake_ai/rl/evolution.py)). Hay una **población de 150 redes** y se repite:
+
+1. Cada red juega 3 partidas y recibe una nota (la misma recompensa que en DQN: +10 por manzana, −10 por morir...).
+2. Las **10 mejores pasan intactas** a la siguiente generación (élite).
+3. El resto se reemplaza por **hijos**: se eligen dos padres buenos (torneo), se **mezclan** sus pesos (cruce)
+   y se alteran un poco al azar (**mutación**: el 5 % de los pesos, con tamaño 0,2).
+
+Nadie le dice a la red qué pesos tocar: solo sobreviven las que juegan mejor. Es la **misma red** que el
+modelo 2 (17 entradas, 24+24 neuronas, 1.107 pesos): cambia solo *cómo se entrena*. Las partidas de cada
+generación se reparten entre todos los núcleos del procesador.
+
+```bash
+python main.py evolve --generations 200 --seed 1 --render   # --render: el campeón juega tras cada generación
+python main.py plot --history models/evolution_run/history.csv --out docs/img/training_evolution.png
+```
+
+**El resultado: la mejor de todas.**
+
+| Modelo | Manzanas de media | Récord | Cómo terminó (300 partidas) |
+|---|---:|---:|---|
+| Modelo 2, DQN, pistas `cola` | 57,2 | 88 | cuerpo 78 %, pared 20 %, hambre 2 % |
+| **Modelo 5, neuroevolución** | **76,2** | **97** | cuerpo 75 %, hambre 18 %, **tablero completo 5 %**, pared 2 % |
+
+El tablero de 10×10 tiene 97 huecos para manzanas (100 casillas menos las 3 de la serpiente): **en 14 de las
+300 partidas, la serpiente llegó a llenar todo el tablero**, es decir, ganó el juego. Misma red, mismas
+pistas: lo que cambia es el método de entrenamiento.
+
+Por qué le va tan bien aquí: el DQN aprende de recompensas con ruido y de una memoria de experiencias
+antiguas; la evolución solo mira el resultado **final** de partidas enteras, y eso premia directamente lo
+que importa (sobrevivir y comer mucho). La contrapartida: necesita simular muchísimas partidas (por eso se
+reparte en todos los núcleos de la CPU) y los resultados varían más entre ejecuciones.
+
+> Aviso honesto: es un solo entrenamiento (semilla 1) y se eligió, entre los 5 finalistas de la última
+> generación, al que más manzanas hacía en 100 partidas; después se midió en 300 partidas distintas
+> (76,2). Con otra semilla el número puede cambiar algo.
+
+| La evolución, generación a generación | La red jugando |
+|:---:|:---:|
+| ![Curva de la evolución](docs/img/training_evolution.png) | ![Modelo evolutivo jugando](docs/img/ia-evolution.gif) |
+
+### Qué queda por hacer
+
+Aún muere casi siempre chocando con su cuerpo y no planifica varias jugadas por adelantado. Falta la etapa
+⏳ de la tabla: aprovechar la **GPU** de verdad con muchas partidas en paralelo.
 
 ---
 

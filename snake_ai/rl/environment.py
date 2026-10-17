@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..game import Action, SnakeGame
-from .observation import DEFAULT_FEATURES, feature_names, observe
+from .observation import DEFAULT_FEATURES, feature_names, observation_shape, observe
 
 
 @dataclass
@@ -24,8 +24,12 @@ class SnakeEnv:
                  rewards: RewardConfig | None = None, features: str = DEFAULT_FEATURES):
         self.features = features  # qué juego de pistas ve la red (ver observation.py)
         self.feature_names = feature_names(features)
-        self.n_inputs = len(self.feature_names)
+        if features == "imagen" and width != height:
+            raise ValueError("Las pistas 'imagen' necesitan un tablero cuadrado (la imagen se gira para que la "
+                             "serpiente mire siempre hacia arriba).")
         self.game = SnakeGame(width, height, seed=seed)
+        self.obs_shape = observation_shape(features, width, height)  # (n,) para vectores; (canales, alto, ancho) para imagen
+        self.n_inputs = int(np.prod(self.obs_shape))
         self.rewards = rewards or RewardConfig()
 
     def reset(self) -> np.ndarray:
