@@ -27,6 +27,7 @@ Lo mejor: **puedes ver su "cerebro" funcionando**, neurona a neurona, mientras a
 8. [Experimentos que puedes probar](#-experimentos-que-puedes-probar)
 9. [Limitaciones y siguientes pasos](#-limitaciones-y-siguientes-pasos)
 10. [Glosario](#-glosario)
+11. [Tests y licencia](#-tests)
 
 ---
 
@@ -35,7 +36,7 @@ Lo mejor: **puedes ver su "cerebro" funcionando**, neurona a neurona, mientras a
 Necesitas Python 3.10 o superior.
 
 ```bash
-# 1. Instalar dependencias
+# 1. Instalar dependencias (mejor dentro de un entorno virtual: python -m venv .venv)
 pip install -r requirements.txt
 
 # 2. Ver jugar a la IA ya entrenada (incluida en el repositorio)
@@ -50,6 +51,10 @@ python main.py play
 
 Controles de la ventana de visualización: `↑`/`↓` cambian la velocidad (Lento → Turbo),
 `Espacio` pausa y `Esc` sale.
+
+> **¿Quieres PyTorch/GPU?** Es opcional: todo lo anterior funciona sin él. Mira
+> [Versión PyTorch y GPU](#-versión-pytorch-y-gpu-cuda). Y si quieres guardar un GIF de lo que ves, añade
+> `--record salida.gif` a `train` o `watch`.
 
 ### Los dos modelos incluidos
 
@@ -75,14 +80,25 @@ Resultados de ambos en [Resultados](#-resultados).
 El repositorio incluye "fotos" de la red NumPy en distintos momentos del entrenamiento. Compáralas:
 
 ```bash
-python main.py watch --model models/evolution/ep_00100.npz   # tras 100 partidas: torpe
-python main.py watch --model models/evolution/ep_00500.npz   # tras 500 partidas: ya persigue la manzana
-python main.py watch --model models/evolution/ep_02000.npz   # tras 2000 partidas: juega bien
+python main.py watch --model models/evolution/ep_00100.npz   # tras 100 partidas
+python main.py watch --model models/evolution/ep_00500.npz   # tras 500 partidas
+python main.py watch --model models/evolution/ep_02000.npz   # tras 2000 partidas
 ```
 
-| Tras 100 partidas | Tras 2000 partidas |
+Manzanas de media de cada "foto" jugando **sin azar** (100 partidas en 10×10):
+
+| Red sin entrenar | Tras 100 partidas | Tras 500 | Tras 1000 | Tras 2000 |
+|---:|---:|---:|---:|---:|
+| 0,1 | 14,0 | 33,8 | 36,5 | 37,8 |
+
+La red aprende **muy rápido**: con solo 100 partidas ya come bastantes manzanas, y a las 500 está casi en su
+nivel final. La curva de entrenamiento de más abajo parece ir más despacio porque, durante el entrenamiento, la
+serpiente juega **al azar a propósito** (ε) al principio para explorar. Esa curva mide lo que *hace* mientras
+entrena, no lo que la red *ya sabe*.
+
+| Tras 100 partidas (media 14) | Modelo final `pretrained.npz` (media 36,5) |
 |:---:|:---:|
-| ![Novata](docs/img/ia-novata.gif) | ![Entrenada](docs/img/ia-entrenada.gif) |
+| ![Tras 100 partidas](docs/img/ia-novata.gif) | ![Modelo final](docs/img/ia-entrenada.gif) |
 
 ---
 
@@ -211,7 +227,8 @@ está verificada en los tests comparándola con el gradiente calculado "a fuerza
 
 ### Cómo aprendieron
 
-**Modelo NumPy**: 2000 partidas en un tablero de 10×10 (≈ 2 minutos en un portátil, solo CPU).
+**Modelo NumPy**: 2000 partidas en un tablero de 10×10 (≈ 2 minutos en un portátil, solo CPU). Recuerda: la
+curva incluye las jugadas al azar del principio, por eso sube más despacio que lo que la red ya sabe.
 
 ![Curva de aprendizaje, modelo NumPy](docs/img/training.png)
 
@@ -349,8 +366,10 @@ flowchart LR
 ```
 snake-deep-learning/
 ├── main.py                  # Punto de entrada: python main.py {play,train,watch,plot}
-├── requirements.txt         # Mínimo (NumPy)
+├── requirements.txt         # Dependencias base (NumPy, pygame, matplotlib, Pillow)
 ├── requirements-torch.txt   # Opcional: PyTorch + instrucciones para CUDA
+├── requirements-dev.txt     # Opcional: pytest, para ejecutar los tests
+├── LICENSE                  # MIT
 ├── snake_ai/
 │   ├── cli.py               # Comandos y opciones
 │   ├── human.py             # Modo "juega tú"
@@ -420,7 +439,8 @@ python main.py plot  [--history models/history.csv] [--out docs/img/training.png
 ```
 
 El entrenamiento guarda en `--out`: `best.npz` (mejor media móvil), `last.npz`, `snapshots/` (una foto cada
-100 partidas) e `history.csv`.
+100 partidas) e `history.csv`. Esos resultados propios **no se suben a Git** (`.gitignore` solo conserva los
+modelos preentrenados incluidos), así que puedes entrenar con tranquilidad sin ensuciar el repositorio.
 
 Entrenar **sin** ventana es más rápido; con `--render --speed Turbo` casi no se nota la diferencia
 (solo se dibuja ~30 veces por segundo).

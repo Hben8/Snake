@@ -13,3 +13,7 @@ models/*
 !models/evolution/
 !models/history.csv
 !models/history_gpu.csv
+
+# Material para redes sociales (vídeos e imágenes) y el script local que lo genera: no se sube
+linkedin/
+scripts/make_social_media.py

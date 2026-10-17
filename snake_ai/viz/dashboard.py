@@ -34,6 +34,9 @@ class Dashboard:
         self.speed_index = next((i for i, (n, _) in enumerate(SPEEDS) if n.lower() == speed.lower()), 1)
         self.paused = False
         self.closed = False
+        self.chart_slots: int | None = None  # nº final de puntos de la gráfica (ver draw_chart)
+        self.chart_window = 50  # ventana de la media móvil de la gráfica (1 = sin suavizar)
+        self.footer: str | None = None  # None = controles por defecto; "" = nada
         self._last_draw = 0.0
         self._last_poll = 0.0
 
@@ -77,7 +80,7 @@ class Dashboard:
         while True:
             if not self.poll():
                 return False
-            self._render(game, network, obs, action, explored, stats, scores, chart_title)
+            self.render(game, network, obs, action, explored, stats, scores, chart_title)
             if not self.paused:
                 break
             self.clock.tick(30)
@@ -91,10 +94,14 @@ class Dashboard:
             self.clock.tick(self.fps)
         return not self.closed
 
-    def _render(self, game, network, obs, action, explored, stats, scores, chart_title) -> None:
+    def render(self, game, network, obs, action, explored, stats, scores, chart_title) -> None:
         screen = self.screen
         screen.fill(theme.BG)
-        theme.draw_text(screen, self.title, (30, 14), 24, bold=True)
+        decision = None
+        if action is not None:
+            who = "AZAR (exploración)" if explored else "LA RED decide"
+            decision = (f"{who}: {ACTION_NAMES[action]}", theme.RANDOM if explored else theme.DECISION)
+        self._draw_title(screen, decision[0] if decision else "")
 
         x = 30
         for label, value in stats:  # barra de estadísticas
@@ -105,23 +112,29 @@ class Dashboard:
         draw_board(screen, pygame.Rect(30, 90, 590, 590), game)
         draw_network(screen, pygame.Rect(650, 12, 620, 440), network, obs,
                      FEATURE_NAMES, ACTION_NAMES, action, explored)
-        draw_chart(screen, pygame.Rect(650, 466, 620, 214), scores, chart_title)
+        draw_chart(screen, pygame.Rect(650, 466, 620, 214), scores, chart_title, window=self.chart_window,
+                   slots=self.chart_slots)
 
-        if action is not None:
-            who = "AZAR (exploración)" if explored else "LA RED decide"
-            color = theme.RANDOM if explored else theme.DECISION
+        if decision is not None:
             # En la fila del título (y=18): la barra de estadísticas de debajo puede ocupar todo el ancho.
-            theme.draw_text(screen, f"{who}: {ACTION_NAMES[action]}", (620, 18), 18, color, bold=True,
-                            anchor="topright")
+            theme.draw_text(screen, decision[0], (620, 18), 18, decision[1], bold=True, anchor="topright")
 
-        name, _ = SPEEDS[self.speed_index]
-        hint = "PAUSA  |  " if self.paused else ""
-        theme.draw_text(
-            screen,
-            f"{hint}Velocidad: {name}   [↑/↓ cambiar]   [Espacio pausa]   [Esc salir]",
-            (30, 696), 14, theme.TEXT_DIM,
-        )
+        if self.footer is None:
+            name, _ = SPEEDS[self.speed_index]
+            hint = "PAUSA  |  " if self.paused else ""
+            footer = f"{hint}Velocidad: {name}   [↑/↓ cambiar]   [Espacio pausa]   [Esc salir]"
+        else:
+            footer = self.footer
+        theme.draw_text(screen, footer, (30, 696), 14, theme.TEXT_DIM)
         pygame.display.flip()
+
+    def _draw_title(self, screen: pygame.Surface, decision_text: str) -> None:
+        """Dibuja el título, encogiéndolo si hiciera falta para no pisar el texto de decisión."""
+        limit = 620 - (theme.font(18, True).size(decision_text)[0] + 24 if decision_text else 0)
+        size = 24
+        while size > 13 and theme.font(size, True).size(self.title)[0] > limit - 30:
+            size -= 1
+        theme.draw_text(screen, self.title, (30, 14 + (24 - size) // 2), size, bold=True)
 
     def close(self) -> None:
         if self.recorder is not None:

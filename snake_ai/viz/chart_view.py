@@ -15,13 +15,15 @@ def _moving_average(values: np.ndarray, window: int) -> np.ndarray:
 
 
 def draw_chart(surface: pygame.Surface, rect: pygame.Rect, scores: list[int],
-               title: str = "Puntuación por partida", window: int = 50) -> None:
+               title: str = "Puntuación por partida", window: int = 50, slots: int | None = None) -> None:
+    """`slots`: nº total de puntos que tendrá la gráfica al final. Si se indica, cada punto ocupa siempre
+    su sitio (la curva "crece" hacia la derecha en lugar de comprimirse) y se dibuja con marcadores."""
     pygame.draw.rect(surface, theme.PANEL, rect, border_radius=10)
     pygame.draw.rect(surface, theme.PANEL_BORDER, rect, 1, border_radius=10)
     theme.draw_text(surface, title, (rect.x + 16, rect.y + 10), 18, bold=True)
 
     plot = pygame.Rect(rect.x + 48, rect.y + 42, rect.width - 68, rect.height - 66)
-    if len(scores) < 2:
+    if len(scores) == 0 or (len(scores) == 1 and slots is None):
         theme.draw_text(surface, "Esperando datos...", plot.center, 15, theme.TEXT_DIM, anchor="center")
         return
 
@@ -35,7 +37,10 @@ def draw_chart(surface: pygame.Surface, rect: pygame.Rect, scores: list[int],
         theme.draw_text(surface, f"{top * frac:.0f}", (plot.x - 8, y), 12, theme.TEXT_DIM, anchor="midright")
 
     def to_points(values: np.ndarray):
-        xs = plot.x + np.linspace(0, plot.width, len(values))
+        if slots:
+            xs = plot.x + np.arange(len(values)) / max(1, slots - 1) * plot.width
+        else:
+            xs = plot.x + np.linspace(0, plot.width, len(values))
         ys = plot.bottom - values / top * plot.height
         return list(zip(xs, ys))
 
@@ -44,8 +49,14 @@ def draw_chart(surface: pygame.Surface, rect: pygame.Rect, scores: list[int],
         bins = np.array_split(data, plot.width)
         data = np.array([b.mean() for b in bins])
         avg = np.array([b.mean() for b in np.array_split(avg, plot.width)])
-    pygame.draw.lines(surface, (70, 100, 150), False, to_points(data), 1)
-    pygame.draw.lines(surface, theme.NEURON_ON, False, to_points(avg), 3)
+    raw, smooth = to_points(data), to_points(avg)
+    if len(raw) >= 2:
+        pygame.draw.lines(surface, (70, 100, 150), False, raw, 1)
+        pygame.draw.lines(surface, theme.NEURON_ON, False, smooth, 3)
+    if slots:  # marcadores: un punto por revisión; el último, resaltado
+        for i, (x, y) in enumerate(smooth):
+            pygame.draw.circle(surface, theme.NEURON_ON, (int(x), int(y)), 6 if i == len(smooth) - 1 else 3)
 
-    theme.draw_text(surface, f"media móvil ({window})", (plot.right, rect.y + 12), 13,
-                    theme.NEURON_ON, anchor="topright")
+    if window > 1:  # con ventana 1 la línea gruesa son los propios datos: no hay media que rotular
+        theme.draw_text(surface, f"media móvil ({window})", (plot.right, rect.y + 12), 13,
+                        theme.NEURON_ON, anchor="topright")

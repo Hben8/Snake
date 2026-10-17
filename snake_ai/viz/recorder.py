@@ -1,4 +1,4 @@
-"""Graba la ventana en un GIF animado (para el README, redes sociales, etc.)."""
+"""Graba la ventana en un GIF animado (para el README, para compartir, etc.)."""
 
 from pathlib import Path
 
