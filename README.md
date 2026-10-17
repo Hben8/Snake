@@ -232,6 +232,10 @@ está verificada en los tests comparándola con el gradiente calculado "a fuerza
 | ⭕ Aro naranja en la salida | La acción se eligió **al azar** (exploración durante el entrenamiento). |
 | `Q=+3.51` | Valor Q de cada acción: lo buena que cree la red que es. |
 
+> **Redes anchas (como la del modelo 4, de 256+256 neuronas):** dibujar 65.000 conexiones sería ilegible y
+> lentísimo, así que las capas grandes se pintan como cuadrículas de puntos y solo se dibujan las conexiones que
+> más aportan en ese instante. Las **redes convolucionales** (modelo 3) se dibujan con sus mapas de filtros.
+
 **Qué observar:**
 
 - Con la **red sin entrenar** (primeros episodios), las activaciones son caóticas y no tienen relación con la

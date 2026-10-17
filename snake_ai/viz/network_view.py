@@ -18,6 +18,8 @@ from ..nn import NeuralNetwork
 from . import theme
 
 _EDGE_THRESHOLD = 0.06  # las conexiones por debajo de este % del máximo se pintan casi invisibles
+_WIDE_LAYER = 32        # a partir de este nº de neuronas una capa se dibuja como cuadrícula de puntos
+_TOP_EDGES = 70         # en redes anchas solo se dibujan las conexiones que más aportan (de 65.000 sería ilegible)
 
 
 def _layer_positions(rect: pygame.Rect, sizes, left: int, right: int, top: int, bottom: int):
@@ -26,6 +28,24 @@ def _layer_positions(rect: pygame.Rect, sizes, left: int, right: int, top: int, 
     for x, n in zip(xs, sizes):
         ys = [rect.y + top + offset for offset in _spread(n, rect.height - top - bottom)]
         positions.append([(int(x), int(y)) for y in ys])
+    return positions
+
+
+def _wide_positions(rect: pygame.Rect, sizes, top: int, bottom: int):
+    """Como `_layer_positions`, pero las capas muy anchas (p. ej. 256 neuronas) se dibujan como una cuadrícula
+    compacta de puntos en vez de una columna imposible de leer."""
+    xs = np.linspace(rect.x + 150, rect.right - 118, len(sizes))
+    middle = rect.y + top + (rect.height - top - bottom) / 2
+    positions = []
+    for x, n in zip(xs, sizes):
+        if n <= _WIDE_LAYER:
+            ys = [rect.y + top + offset for offset in _spread(n, rect.height - top - bottom)]
+            positions.append([(int(x), int(y)) for y in ys])
+        else:
+            cols = 12
+            rows = -(-n // cols)
+            positions.append([(int(x + (k % cols - (cols - 1) / 2) * 8), int(middle + (k // cols - (rows - 1) / 2) * 8))
+                              for k in range(n)])
     return positions
 
 
@@ -53,7 +73,11 @@ def draw_network(
 
     layers = network.activations(obs)
     sizes = [len(layer) for layer in layers]
-    pos = _layer_positions(rect, sizes, left=150, right=118, top=84, bottom=26)
+    wide = max(sizes) > _WIDE_LAYER
+    if wide:
+        pos = _wide_positions(rect, sizes, top=84, bottom=26)
+    else:
+        pos = _layer_positions(rect, sizes, left=150, right=118, top=84, bottom=26)
 
     # --- conexiones (de más débiles a más fuertes, para que las fuertes queden encima)
     overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
@@ -64,7 +88,12 @@ def draw_network(
         if scale < 1e-9:
             scale = 1.0
         norm = np.abs(contrib) / scale
-        order = np.argsort(norm, axis=None)
+        if wide:  # solo las conexiones más fuertes (ordenadas de menos a más, para que las fuertes queden encima)
+            top_k = min(_TOP_EDGES, norm.size)
+            strongest = np.argpartition(norm, -top_k, axis=None)[-top_k:]
+            order = strongest[np.argsort(norm.ravel()[strongest])]
+        else:
+            order = np.argsort(norm, axis=None)
         for flat in order:
             i, j = divmod(int(flat), contrib.shape[1])
             s = float(norm[i, j])
@@ -89,7 +118,7 @@ def draw_network(
         else:
             peak = float(layer.max())
             levels = layer / peak if peak > 1e-9 else np.zeros_like(layer)
-        radius = 11 if sizes[li] <= 12 else 7
+        radius = 11 if sizes[li] <= 12 else (7 if sizes[li] <= _WIDE_LAYER else 3)
         for k, ((x, y), level) in enumerate(zip(nodes, levels)):
             active = layer[k] > 0 if not is_output else True
             color = theme.lerp_color(theme.NEURON_OFF, theme.NEURON_ON, level if active else 0.0)
